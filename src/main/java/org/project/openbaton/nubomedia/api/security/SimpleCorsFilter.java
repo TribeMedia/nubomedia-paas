@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.project.openbaton.nubomedia.api.core;
+package org.project.openbaton.nubomedia.api.security;
 
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;

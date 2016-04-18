@@ -57,11 +57,7 @@ public class NubomediaAppManager {
     }
 
     @RequestMapping(value = "/app",  method = RequestMethod.POST)
-    public @ResponseBody NubomediaCreateAppResponse createApp(@RequestHeader("Auth-Token") String token, @RequestBody NubomediaCreateAppRequest request) throws SDKException, UnauthorizedException, DuplicatedException, NameStructureException, turnServerException, StunServerException {
-
-        if(token == null){
-            throw new UnauthorizedException("No auth-token header");
-        }
+    public @ResponseBody NubomediaCreateAppResponse createApp(@RequestBody NubomediaCreateAppRequest request) throws SDKException, UnauthorizedException, DuplicatedException, NameStructureException, turnServerException, StunServerException {
 
         if(request.getAppName().length() > 18){
 
@@ -106,7 +102,6 @@ public class NubomediaAppManager {
         //Openbaton MediaServer Request
         logger.info("[PAAS]: EVENT_APP_CREATE " + new Date().getTime());
         OpenbatonCreateServer openbatonCreateServer = obmanager.getMediaServerGroupID(request.getFlavor(),appID,paaSProperties.getInternalURL(),request.isCloudRepository(), request.getQualityOfService(),request.isTurnServerActivate(),request.getTurnServerUrl(),request.getTurnServerUsername(),request.getTurnServerPassword(),request.isStunServerActivate(), request.getStunServerIp(), request.getStunServerPort(), request.getScaleInOut(),request.getScale_out_threshold());
-        openbatonCreateServer.setToken(token);
 
         deploymentMap.put(appID,openbatonCreateServer);
 
@@ -119,13 +114,9 @@ public class NubomediaAppManager {
     }
 
     @RequestMapping(value = "/app/{id}", method =  RequestMethod.GET)
-    public @ResponseBody Application getApp(@RequestHeader("Auth-token") String token, @PathVariable("id") String id) throws ApplicationNotFoundException, UnauthorizedException {
+    public @ResponseBody Application getApp(@PathVariable("id") String id) throws ApplicationNotFoundException, UnauthorizedException {
 
         logger.info("Request status for " + id + " app");
-
-        if(token == null){
-            throw new UnauthorizedException("no auth-token header");
-        }
 
         if(!appRepo.exists(id)){
             throw new ApplicationNotFoundException("Application with ID not found");
@@ -134,60 +125,7 @@ public class NubomediaAppManager {
         Application app = appRepo.findFirstByAppID(id);
         logger.debug("Retrieving status for " + app.toString() + "\nwith status " + app.getStatus());
 
-        switch (app.getStatus()){
-            case CREATED:
-                app.setStatus(obmanager.getStatus(app.getNsrID()));
-                break;
-            case INITIALIZING:
-                app.setStatus(obmanager.getStatus(app.getNsrID()));
-                break;
-            case INITIALISED:
-                try {
-                    app.setStatus(osmanager.getStatus(token, app.getAppName(), app.getProjectName()));
-                }catch (ResourceAccessException e){
-                    app.setStatus(BuildingStatus.PAAS_RESOURCE_MISSING);
-                }
-                break;
-            case BUILDING:
-                try{
-                    app.setStatus(osmanager.getStatus(token, app.getAppName(),app.getProjectName()));
-                }catch (ResourceAccessException e){
-                    app.setStatus(BuildingStatus.PAAS_RESOURCE_MISSING);
-                }
-                break;
-            case DEPLOYNG:
-                try{
-                    app.setStatus(osmanager.getStatus(token, app.getAppName(),app.getProjectName()));
-                }catch (ResourceAccessException e){
-                    app.setStatus(BuildingStatus.PAAS_RESOURCE_MISSING);
-                }
-                break;
-            case FAILED:
-                logger.debug("FAILED: app has resource ok? " + app.isResourceOK());
-                if (!app.isResourceOK()){
-                    app.setStatus(BuildingStatus.FAILED);
-                    break;
-                }
-                else {
-                    try {
-                        app.setStatus(osmanager.getStatus(token, app.getAppName(), app.getProjectName()));
-                    } catch (ResourceAccessException e) {
-                        app.setStatus(BuildingStatus.PAAS_RESOURCE_MISSING);
-                    }
-                }
-                break;
-            case RUNNING:
-                try{
-                    app.setStatus(osmanager.getStatus(token, app.getAppName(),app.getProjectName()));
-                    app.setPodList(osmanager.getPodList(token,app.getAppName(),app.getProjectName()));
-                }catch (ResourceAccessException e){
-                    app.setStatus(BuildingStatus.PAAS_RESOURCE_MISSING);
-                }
-                break;
-            case PAAS_RESOURCE_MISSING:
-                app.setStatus(osmanager.getStatus(token,app.getAppName(),app.getProjectName()));
-                break;
-        }
+        app.setStatus(this.getStatus(app));
 
         appRepo.save(app);
 
@@ -196,11 +134,7 @@ public class NubomediaAppManager {
     }
 
     @RequestMapping(value = "/app/{id}/buildlogs", method = RequestMethod.GET)
-    public @ResponseBody NubomediaBuildLogs getBuildLogs(@RequestHeader("Auth-token") String token, @PathVariable("id") String id) throws UnauthorizedException {
-
-        if(token == null){
-            throw new UnauthorizedException("no auth-token header");
-        }
+    public @ResponseBody NubomediaBuildLogs getBuildLogs(@PathVariable("id") String id) throws UnauthorizedException {
 
         NubomediaBuildLogs res = new NubomediaBuildLogs();
 
@@ -237,7 +171,7 @@ public class NubomediaAppManager {
             res.setAppName(app.getAppName());
             res.setProjectName(app.getProjectName());
             try {
-                res.setLog(osmanager.getBuildLogs(token, app.getAppName(), app.getProjectName()));
+                res.setLog(osmanager.getBuildLogs(app.getAppName(), app.getProjectName()));
             } catch (ResourceAccessException e) {
                 app.setStatus(BuildingStatus.PAAS_RESOURCE_MISSING);
                 appRepo.save(app);
@@ -249,11 +183,7 @@ public class NubomediaAppManager {
     }
 
     @RequestMapping(value = "/app/{id}/logs/{podName}", method = RequestMethod.GET)
-    public @ResponseBody String getApplicationLogs(@RequestHeader("Auth-token") String token, @PathVariable("id") String id,@PathVariable("podName") String podName) throws UnauthorizedException, ApplicationNotFoundException {
-
-        if(token == null){
-            throw new UnauthorizedException("no auth-token header");
-        }
+    public @ResponseBody String getApplicationLogs(@PathVariable("id") String id,@PathVariable("podName") String podName) throws UnauthorizedException, ApplicationNotFoundException {
 
         if(!appRepo.exists(id)){
             throw new ApplicationNotFoundException("Application with ID not found");
@@ -265,21 +195,18 @@ public class NubomediaAppManager {
             return "Application Status " + app.getStatus() + ", logs are not available until the status is RUNNING";
         }
 
-        return osmanager.getApplicationLog(token,app.getAppName(),app.getProjectName(),podName);
+        return osmanager.getApplicationLog(app.getAppName(),app.getProjectName(),podName);
 
     }
 
     @RequestMapping(value = "/app", method = RequestMethod.GET)
-    public @ResponseBody Iterable<Application> getApps(@RequestHeader("Auth-token") String token) throws UnauthorizedException, ApplicationNotFoundException {
+    public @ResponseBody Iterable<Application> getApps() throws UnauthorizedException, ApplicationNotFoundException {
 
-        if(token == null){
-            throw new UnauthorizedException("no auth-token header");
-        }
         //BETA
         Iterable<Application> applications = this.appRepo.findAll();
 
         for (Application app : applications){
-            app.setStatus(this.getStatus(token,app));
+            app.setStatus(this.getStatus(app));
         }
 
         this.appRepo.save(applications);
@@ -288,11 +215,7 @@ public class NubomediaAppManager {
     }
 
     @RequestMapping(value = "/app/{id}", method = RequestMethod.DELETE)
-    public @ResponseBody NubomediaDeleteAppResponse deleteApp(@RequestHeader("Auth-token") String token, @PathVariable("id") String id) throws UnauthorizedException {
-
-        if(token == null){
-            throw new UnauthorizedException("no auth-token header");
-        }
+    public @ResponseBody NubomediaDeleteAppResponse deleteApp(@PathVariable("id") String id) throws UnauthorizedException {
 
         logger.debug("id " + id);
 
@@ -301,7 +224,7 @@ public class NubomediaAppManager {
         }
 
         Application app = appRepo.findFirstByAppID(id);
-        app.setStatus(this.getStatus(token,app));
+        app.setStatus(this.getStatus(app));
         logger.debug("Deleting " + app.toString());
 
         if (!app.isResourceOK()){
@@ -345,7 +268,7 @@ public class NubomediaAppManager {
         obmanager.deleteRecord(app.getNsrID());
         HttpStatus resDelete = HttpStatus.BAD_REQUEST;
         try {
-            resDelete = osmanager.deleteApplication(token, app.getAppName(), app.getProjectName());
+            resDelete = osmanager.deleteApplication(app.getAppName(), app.getProjectName());
         } catch (ResourceAccessException e){
             logger.info("PaaS Missing");
         }
@@ -356,40 +279,17 @@ public class NubomediaAppManager {
     }
 
     @RequestMapping(value = "/secret", method = RequestMethod.POST)
-    public @ResponseBody String createSecret(@RequestHeader("Auth-token") String token, @RequestBody NubomediaCreateSecretRequest ncsr) throws UnauthorizedException {
-
-        if(token == null){
-            throw new UnauthorizedException("no auth-token header");
-        }
+    public @ResponseBody String createSecret(@RequestBody NubomediaCreateSecretRequest ncsr) throws UnauthorizedException {
 
         logger.debug("Creating new secret for " + ncsr.getProjectName() + " with key " + ncsr.getPrivateKey());
-        return osmanager.createSecret(token, ncsr.getPrivateKey(), ncsr.getProjectName());
+        return osmanager.createSecret(ncsr.getPrivateKey(), ncsr.getProjectName());
     }
 
     @RequestMapping(value = "/secret/{projectName}/{secretName}", method = RequestMethod.DELETE)
-    public @ResponseBody NubomediaDeleteSecretResponse deleteSecret (@RequestHeader("Auth-token") String token, @PathVariable("secretName") String secretName, @PathVariable("projectName") String projectName) throws UnauthorizedException {
+    public @ResponseBody NubomediaDeleteSecretResponse deleteSecret (@PathVariable("secretName") String secretName, @PathVariable("projectName") String projectName) throws UnauthorizedException {
 
-        if(token == null){
-            throw new UnauthorizedException("no auth-token header");
-        }
-
-        HttpStatus deleteStatus = osmanager.deleteSecret(token, secretName, projectName);
+        HttpStatus deleteStatus = osmanager.deleteSecret(secretName, projectName);
         return new NubomediaDeleteSecretResponse(secretName,projectName,deleteStatus.value());
-    }
-
-    @RequestMapping(value = "/auth", method = RequestMethod.POST)
-    public @ResponseBody NubomediaAuthorizationResponse authorize(@RequestBody NubomediaAuthorizationRequest request) throws UnauthorizedException {
-
-        String token = osmanager.authenticate(request.getUsername(),request.getPassword());
-        if (token.equals("Unauthorized")){
-            return new NubomediaAuthorizationResponse(token,401);
-        }
-        else if (token.equals("PaaS Missing")){
-            return new NubomediaAuthorizationResponse(token,404);
-        }
-        else{
-            return new NubomediaAuthorizationResponse(token,200);
-        }
     }
 
     @RequestMapping(value = "/openbaton/{id}", method = RequestMethod.POST, consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -423,7 +323,6 @@ public class NubomediaAppManager {
 
             }
 
-            logger.debug("retrieved session for " + server.getToken());
             String route = null;
             try {
                 int[] ports = new int[app.getPorts().size()];
@@ -438,7 +337,7 @@ public class NubomediaAppManager {
                 logger.debug("cloudRepositoryPort "+ cloudRepositoryPort + " IP " + cloudRepositoryIp);
 
                 try {
-                    route = osmanager.buildApplication(server.getToken(), app.getAppID(), app.getAppName(), app.getProjectName(), app.getGitURL(), ports, targetPorts, app.getProtocols().toArray(new String[0]), app.getReplicasNumber(), app.getSecretName(), vnfrID, paaSProperties.getVnfmIP(), paaSProperties.getVnfmPort(), cloudRepositoryIp, cloudRepositoryPort);
+                    route = osmanager.buildApplication(app.getAppID(), app.getAppName(), app.getProjectName(), app.getGitURL(), ports, targetPorts, app.getProtocols().toArray(new String[0]), app.getReplicasNumber(), app.getSecretName(), vnfrID, paaSProperties.getVnfmIP(), paaSProperties.getVnfmPort(), cloudRepositoryIp, cloudRepositoryPort);
 
                 } catch (ResourceAccessException e){
                     obmanager.deleteDescriptor(server.getNsdID());
@@ -491,81 +390,65 @@ public class NubomediaAppManager {
         return null;
     }
 
-    private BuildingStatus getStatus(String token, Application app) throws UnauthorizedException {
+    private BuildingStatus getStatus(Application app) throws UnauthorizedException {
 
         BuildingStatus res = null;
 
-        switch (app.getStatus()){
+        switch (app.getStatus()) {
             case CREATED:
-                res =  obmanager.getStatus(app.getNsrID());
+                res = obmanager.getStatus(app.getNsrID());
                 break;
             case INITIALIZING:
                 res = obmanager.getStatus(app.getNsrID());
                 break;
             case INITIALISED:
                 try {
-                    res = osmanager.getStatus(token, app.getAppName(), app.getProjectName());
-                }catch (ResourceAccessException e){
+                    res = osmanager.getStatus(app.getAppName(), app.getProjectName());
+                } catch (ResourceAccessException e) {
                     res = BuildingStatus.PAAS_RESOURCE_MISSING;
                 }
                 break;
             case BUILDING:
-                try{
-                    res = osmanager.getStatus(token, app.getAppName(),app.getProjectName());
-                }catch (ResourceAccessException e){
+                try {
+                    res = osmanager.getStatus(app.getAppName(), app.getProjectName());
+                } catch (ResourceAccessException e) {
                     res = BuildingStatus.PAAS_RESOURCE_MISSING;
                 }
                 break;
             case DEPLOYNG:
-                try{
-                    res = osmanager.getStatus(token, app.getAppName(),app.getProjectName());
-                }catch (ResourceAccessException e){
+                try {
+                    res = osmanager.getStatus(app.getAppName(), app.getProjectName());
+                } catch (ResourceAccessException e) {
                     res = BuildingStatus.PAAS_RESOURCE_MISSING;
                 }
                 break;
             case FAILED:
                 logger.debug("FAILED: app has resource ok? " + app.isResourceOK());
-                if (!app.isResourceOK()){
+                if (!app.isResourceOK()) {
                     res = BuildingStatus.FAILED;
                     break;
-                }
-                else {
+                } else {
                     try {
-                        res = osmanager.getStatus(token, app.getAppName(), app.getProjectName());
+                        res = osmanager.getStatus(app.getAppName(), app.getProjectName());
                     } catch (ResourceAccessException e) {
                         res = BuildingStatus.PAAS_RESOURCE_MISSING;
                     }
                 }
                 break;
             case RUNNING:
-                try{
-                    res = osmanager.getStatus(token, app.getAppName(),app.getProjectName());
-                }catch (ResourceAccessException e){
+                try {
+                    res = osmanager.getStatus(app.getAppName(), app.getProjectName());
+                } catch (ResourceAccessException e) {
                     res = BuildingStatus.PAAS_RESOURCE_MISSING;
                 }
                 break;
             case PAAS_RESOURCE_MISSING:
-                res = osmanager.getStatus(token, app.getAppName(),app.getProjectName());
+                res = osmanager.getStatus(app.getAppName(), app.getProjectName());
                 break;
         }
 
         return res;
     }
-
-//    @Scheduled(initialDelay = 0,fixedDelay = 200)
-//    public void refreshStatus() throws ApplicationNotFoundException, UnauthorizedException {
-//
-//        for (String id : deploymentMap.keySet()){
-//            boolean writed = false;
-//            OpenbatonCreateServer ocs = deploymentMap.get(id);
-//            Application app = this.getApp(ocs.getToken(),id);
-//            if(app.getStatus() == BuildingStatus.RUNNING && !writed){
-//                logger.info("[PAAS]: APP_RUNNING " + new Date().getTime());
-//                writed = true;
-//            }
-//        }
-//
-//    }
 
 }
 

@@ -9,7 +9,6 @@ public class OpenbatonCreateServer {
     private String eventAllocatedID;
     private String eventErrorID;
     private String nsdID;
-    private String token;
 
     public OpenbatonCreateServer() {
     }
@@ -46,14 +45,6 @@ public class OpenbatonCreateServer {
         this.eventErrorID = eventErrorID;
     }
 
-    public String getToken(){
-        return this.token;
-    }
-
-    public void setToken(String token) {
-        this.token = token;
-    }
-
     @Override
     public String toString() {
         return "OpenbatonCreateServer{" +
@@ -61,7 +52,6 @@ public class OpenbatonCreateServer {
                 ", eventAllocatedID='" + eventAllocatedID + '\'' +
                 ", eventErrorID='" + eventErrorID + '\'' +
                 ", nsdID='" + nsdID + '\'' +
-                ", token='" + token + '\'' +
                 '}';
     }
 }

@@ -6,6 +6,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.orm.jpa.EntityScan;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.test.context.ContextConfiguration;
 
 /**
@@ -16,7 +17,7 @@ import org.springframework.test.context.ContextConfiguration;
 @EnableJpaRepositories ("org.project.openbaton.nubomedia.api")
 @EntityScan (basePackages = "org.project.openbaton")
 @ComponentScan(basePackages = "org.project.openbaton")
-// /@EnableScheduling
+@EnableScheduling
 public class Main {
 
 

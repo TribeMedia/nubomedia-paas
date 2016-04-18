@@ -24,17 +24,19 @@ public class ProjectManager {
     @Autowired private RestTemplate template;
     @Autowired private Gson mapper;
     private Logger logger;
-    private String suffix;
+    private String suffixCreation;
+    private String suffixDelete;
 
     @PostConstruct
     private void init(){
         this.logger = LoggerFactory.getLogger(this.getClass());
-        this.suffix = "/projectrequest";
+        this.suffixCreation = "/projectrequest";
+        this.suffixDelete = "/projects";
     }
 
     public Project createProject(String authToken, String baseURL, String name) throws UnauthorizedException {
         logger.debug("Creating ProjectRequest for user " + name);
-        String url = baseURL + suffix;
+        String url = baseURL + suffixCreation;
         HttpHeaders headers = new HttpHeaders();
         headers.add("Authorization","Bearer " + authToken);
         ProjectRequest message = MessageBuilderFactory.getProjectRequest(name);
@@ -49,6 +51,20 @@ public class ProjectManager {
             throw new UnauthorizedException("Get 401 response from ProjectRequest");
         }
         return mapper.fromJson(projectResponse.getBody(),Project.class);
+    }
+
+    public ResponseEntity<String> deleteProject (String authToken, String baseURL, String name){
+        logger.debug("Removing project " + name);
+        String url = baseURL + suffixDelete + "/" + name;
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Authorization", "Bearer " + authToken);
+        HttpEntity<String> deleteEntity = new HttpEntity<>(headers);
+        ResponseEntity<String> delete = template.exchange(url,HttpMethod.DELETE,deleteEntity,String.class);
+
+        if (!delete.getStatusCode().is2xxSuccessful()){
+            logger.debug("WRONG DELETE " + delete.getBody());
+        }
+        return  delete;
     }
 
 }

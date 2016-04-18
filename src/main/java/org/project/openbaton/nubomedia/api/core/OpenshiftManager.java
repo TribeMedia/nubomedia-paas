@@ -8,6 +8,7 @@ import org.project.openbaton.nubomedia.api.openshift.beans.*;
 import org.project.openbaton.nubomedia.api.openshift.exceptions.DuplicatedException;
 import org.project.openbaton.nubomedia.api.openshift.exceptions.UnauthorizedException;
 import org.project.openbaton.nubomedia.api.openshift.json.ImageStreamConfig;
+import org.project.openbaton.nubomedia.api.openshift.json.Project;
 import org.project.openbaton.nubomedia.api.openshift.json.RouteConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +17,7 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
@@ -38,10 +40,12 @@ public class OpenshiftManager {
     @Autowired private ServiceManager serviceManager;
     @Autowired private RouteManager routeManager;
     @Autowired private AuthenticationManager authManager;
-    @ Autowired private OpenshiftProperties properties;
+    @Autowired private ProjectManager projectManager;
+    @Autowired private OpenshiftProperties properties;
     private Logger logger;
     private String openshiftBaseURL;
     private String kubernetesBaseURL;
+    private String token;
 
 
     @PostConstruct
@@ -49,15 +53,21 @@ public class OpenshiftManager {
         this.logger = LoggerFactory.getLogger(this.getClass());
         this.openshiftBaseURL = properties.getBaseURL() + "/oapi/v1/namespaces/";
         this.kubernetesBaseURL = properties.getBaseURL() + "/api/v1/namespaces/";
+        this.token = "";
     }
 
-    public String authenticate(String username, String password) throws UnauthorizedException {
+    @Scheduled (initialDelay = 0, fixedDelay = 36000000)
+    private void authenticate(String username, String password) throws UnauthorizedException {
 
-        return this.authManager.authenticate(properties.getBaseURL(),username,password);
+        this.token =  this.authManager.authenticate(properties.getBaseURL(),username,password);
+
+        if (token.equals("PaaS Missing")){
+            throw new UnauthorizedException("PAAS CRASHED");
+        }
 
     }
 
-    public String buildApplication(String token, String appID, String appName, String namespace,String gitURL,int[] ports,int[] targetPorts,String[] protocols, int replicasnumber, String secretName, String mediaServerGID, String vnfmIp, String vnfmPort, String cloudRepositoryIp, String cloudRepositoryPort) throws DuplicatedException, UnauthorizedException {
+    public String buildApplication(String appID, String appName, String namespace,String gitURL,int[] ports,int[] targetPorts,String[] protocols, int replicasnumber, String secretName, String mediaServerGID, String vnfmIp, String vnfmPort, String cloudRepositoryIp, String cloudRepositoryPort) throws DuplicatedException, UnauthorizedException {
 
         HttpHeaders creationHeader = new HttpHeaders();
         creationHeader.add("Authorization","Bearer " + token);
@@ -103,7 +113,7 @@ public class OpenshiftManager {
 
     }
 
-    public HttpStatus deleteApplication(String token, String appName, String namespace) throws UnauthorizedException {
+    public HttpStatus deleteApplication(String appName, String namespace) throws UnauthorizedException {
 
         HttpHeaders deleteHeader = new HttpHeaders();
         deleteHeader.add("Authorization","Bearer " + token);
@@ -129,14 +139,14 @@ public class OpenshiftManager {
         return res;
     }
 
-    public String createSecret (String token, String privateKey, String namespace) throws UnauthorizedException {
+    public String createSecret (String privateKey, String namespace) throws UnauthorizedException {
 
         HttpHeaders authHeader = new HttpHeaders();
         authHeader.add("Authorization","Bearer " + token);
         return secretManager.createSecret(kubernetesBaseURL, namespace, privateKey, authHeader);
     }
 
-    public HttpStatus deleteSecret(String token ,String secretName, String namespace) throws UnauthorizedException {
+    public HttpStatus deleteSecret(String secretName, String namespace) throws UnauthorizedException {
         HttpHeaders authHeader = new HttpHeaders();
         authHeader.add("Authorization","Bearer " + token);
 
@@ -144,7 +154,7 @@ public class OpenshiftManager {
         return entity;
     }
 
-    public BuildingStatus getStatus (String token, String appName, String namespace) throws UnauthorizedException {
+    public BuildingStatus getStatus (String appName, String namespace) throws UnauthorizedException {
 
         BuildingStatus res = BuildingStatus.INITIALISED;
         HttpHeaders authHeader = new HttpHeaders();
@@ -175,7 +185,7 @@ public class OpenshiftManager {
         return res;
     }
 
-    public String getApplicationLog(String token, String appName, String namespace,String podName) throws UnauthorizedException {
+    public String getApplicationLog(String appName, String namespace,String podName) throws UnauthorizedException {
 
         HttpHeaders authHeader = new HttpHeaders();
         authHeader.add("Authorization", "Bearer " + token);
@@ -184,18 +194,26 @@ public class OpenshiftManager {
         return deploymentManager.getPodLogs(kubernetesBaseURL,namespace,appName,podName, requestEntity);
     }
 
-    public String getBuildLogs(String token, String appName,String namespace) throws UnauthorizedException {
+    public String getBuildLogs(String appName,String namespace) throws UnauthorizedException {
 
         HttpHeaders authHeader = new HttpHeaders();
         authHeader.add("Authorization","Bearer " + token);
         return buildManager.getBuildLogs(openshiftBaseURL, appName, namespace, authHeader);
     }
 
-    public List<String> getPodList (String token, String appName, String namespace) throws UnauthorizedException{
+    public List<String> getPodList (String appName, String namespace) throws UnauthorizedException{
         HttpHeaders authHeader = new HttpHeaders();
         authHeader.add("Authorization", "Bearer " + token);
         HttpEntity<String> requestEntity = new HttpEntity<>(authHeader);
         return deploymentManager.getPodNameList(kubernetesBaseURL,namespace,appName,requestEntity);
+    }
+
+    public Project createProject (String username) throws UnauthorizedException {
+        return this.projectManager.createProject(token,openshiftBaseURL,username);
+    }
+
+    public ResponseEntity<String> deleteProject (String username){
+        return this.projectManager.deleteProject(token,openshiftBaseURL,username);
     }
 
 }

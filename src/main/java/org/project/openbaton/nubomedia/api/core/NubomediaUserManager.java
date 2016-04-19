@@ -18,6 +18,7 @@ import javax.annotation.PostConstruct;
 public class NubomediaUserManager {
 
     @Autowired private UserRepository repository;
+    @Autowired private OpenshiftManager osmanager;
     private Logger logger;
 
     @PostConstruct
@@ -49,5 +50,5 @@ public class NubomediaUserManager {
         repository.delete(deleteUser);
         return "User " + username + " successfully deleted";
     }
-
+    //user must be created by an administrator, it also must be assigned to a project
 }

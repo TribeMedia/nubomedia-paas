@@ -7,7 +7,6 @@ public class NubomediaBuildLogs {
 
     private String id;
     private String appName;
-    private String projectName;
     private String log;
 
     public NubomediaBuildLogs() {
@@ -27,14 +26,6 @@ public class NubomediaBuildLogs {
 
     public void setAppName(String appName) {
         this.appName = appName;
-    }
-
-    public String getProjectName() {
-        return projectName;
-    }
-
-    public void setProjectName(String projectName) {
-        this.projectName = projectName;
     }
 
     public String getLog() {

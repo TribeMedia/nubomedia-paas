@@ -9,6 +9,7 @@ import org.project.openbaton.nubomedia.api.openshift.exceptions.DuplicatedExcept
 import org.project.openbaton.nubomedia.api.openshift.exceptions.UnauthorizedException;
 import org.project.openbaton.nubomedia.api.openshift.json.ImageStreamConfig;
 import org.project.openbaton.nubomedia.api.openshift.json.Project;
+import org.project.openbaton.nubomedia.api.openshift.json.ProjectList;
 import org.project.openbaton.nubomedia.api.openshift.json.RouteConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +23,7 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 
@@ -214,6 +216,17 @@ public class OpenshiftManager {
 
     public ResponseEntity<String> deleteProject (String username){
         return this.projectManager.deleteProject(token,openshiftBaseURL,username);
+    }
+
+    public List<String> getProjects (){
+        ProjectList projectList = this.projectManager.getProjects(token,openshiftBaseURL);
+        List<String> res = new ArrayList<>();
+
+        for (Project project : projectList.getItems()){
+            res.add(project.getMetadata().getName());
+        }
+
+        return res;
     }
 
 }

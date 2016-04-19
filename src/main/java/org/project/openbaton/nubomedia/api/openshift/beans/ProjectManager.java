@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import org.project.openbaton.nubomedia.api.openshift.builders.MessageBuilderFactory;
 import org.project.openbaton.nubomedia.api.openshift.exceptions.UnauthorizedException;
 import org.project.openbaton.nubomedia.api.openshift.json.Project;
+import org.project.openbaton.nubomedia.api.openshift.json.ProjectList;
 import org.project.openbaton.nubomedia.api.openshift.json.ProjectRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,13 +26,13 @@ public class ProjectManager {
     @Autowired private Gson mapper;
     private Logger logger;
     private String suffixCreation;
-    private String suffixDelete;
+    private String suffixProjects;
 
     @PostConstruct
     private void init(){
         this.logger = LoggerFactory.getLogger(this.getClass());
         this.suffixCreation = "/projectrequest";
-        this.suffixDelete = "/projects";
+        this.suffixProjects = "/projects";
     }
 
     public Project createProject(String authToken, String baseURL, String name) throws UnauthorizedException {
@@ -55,7 +56,7 @@ public class ProjectManager {
 
     public ResponseEntity<String> deleteProject (String authToken, String baseURL, String name){
         logger.debug("Removing project " + name);
-        String url = baseURL + suffixDelete + "/" + name;
+        String url = baseURL + suffixProjects + "/" + name;
         HttpHeaders headers = new HttpHeaders();
         headers.add("Authorization", "Bearer " + authToken);
         HttpEntity<String> deleteEntity = new HttpEntity<>(headers);
@@ -65,6 +66,21 @@ public class ProjectManager {
             logger.debug("WRONG DELETE " + delete.getBody());
         }
         return  delete;
+    }
+
+    public ProjectList getProjects (String authToken, String baseURL){
+        logger.debug("Getting project list");
+        String url = baseURL + suffixProjects;
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Authorization", "Bearer " + authToken);
+        HttpEntity<String> getEntity = new HttpEntity<>(headers);
+        ResponseEntity<String> get = template.exchange(url,HttpMethod.GET,getEntity,String.class);
+
+        if (!get.getStatusCode().is2xxSuccessful()){
+            logger.debug("WRONG GET " + get.getBody());
+        }
+
+        return mapper.fromJson(get.getBody(),ProjectList.class);
     }
 
 }

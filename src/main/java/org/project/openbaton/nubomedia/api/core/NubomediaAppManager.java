@@ -143,6 +143,8 @@ public class NubomediaAppManager {
     public @ResponseBody NubomediaBuildLogs getBuildLogs(@PathVariable("id") String id) throws UnauthorizedException {
 
         NubomediaBuildLogs res = new NubomediaBuildLogs();
+        UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String projectName = userDetails.getUsername();
 
         if(!appRepo.exists(id)){
             return null;
@@ -154,20 +156,17 @@ public class NubomediaAppManager {
 
             res.setId(id);
             res.setAppName(app.getAppName());
-            res.setProjectName(app.getProjectName());
             res.setLog("Something wrong on retrieving resources");
 
         } else if(app.getStatus().equals(BuildingStatus.CREATED) || app.getStatus().equals(BuildingStatus.INITIALIZING)){
             res.setId(id);
             res.setAppName(app.getAppName());
-            res.setProjectName(app.getProjectName());
             res.setLog("The application is retrieving resources " + app.getStatus());
 
             return res;
         } else if (app.getStatus().equals(BuildingStatus.PAAS_RESOURCE_MISSING)){
             res.setId(id);
             res.setAppName(app.getAppName());
-            res.setProjectName(app.getProjectName());
             res.setLog("PaaS components are missing, send an email to the administrator to chekc the PaaS status");
 
             return res;
@@ -175,9 +174,8 @@ public class NubomediaAppManager {
 
             res.setId(id);
             res.setAppName(app.getAppName());
-            res.setProjectName(app.getProjectName());
             try {
-                res.setLog(osmanager.getBuildLogs(app.getAppName(), app.getProjectName()));
+                res.setLog(osmanager.getBuildLogs(app.getAppName(), projectName));
             } catch (ResourceAccessException e) {
                 app.setStatus(BuildingStatus.PAAS_RESOURCE_MISSING);
                 appRepo.save(app);
@@ -191,6 +189,9 @@ public class NubomediaAppManager {
     @RequestMapping(value = "/app/{id}/logs/{podName}", method = RequestMethod.GET)
     public @ResponseBody String getApplicationLogs(@PathVariable("id") String id,@PathVariable("podName") String podName) throws UnauthorizedException, ApplicationNotFoundException {
 
+        UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String projectName = userDetails.getUsername();
+
         if(!appRepo.exists(id)){
             throw new ApplicationNotFoundException("Application with ID not found");
         }
@@ -201,7 +202,7 @@ public class NubomediaAppManager {
             return "Application Status " + app.getStatus() + ", logs are not available until the status is RUNNING";
         }
 
-        return osmanager.getApplicationLog(app.getAppName(),app.getProjectName(),podName);
+        return osmanager.getApplicationLog(app.getAppName(),projectName,podName);
 
     }
 
@@ -223,10 +224,13 @@ public class NubomediaAppManager {
     @RequestMapping(value = "/app/{id}", method = RequestMethod.DELETE)
     public @ResponseBody NubomediaDeleteAppResponse deleteApp(@PathVariable("id") String id) throws UnauthorizedException {
 
+        UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String projectName = userDetails.getUsername();
+
         logger.debug("id " + id);
 
         if(!appRepo.exists(id)){
-            return new NubomediaDeleteAppResponse(id,"Application not found","null",404);
+            return new NubomediaDeleteAppResponse(id,"Application not found",404);
         }
 
         Application app = appRepo.findFirstByAppID(id);
@@ -236,7 +240,6 @@ public class NubomediaAppManager {
         if (!app.isResourceOK()){
 
             String name = app.getAppName();
-            String projectName = app.getProjectName();
 
             if(app.getStatus().equals(BuildingStatus.CREATED) || app.getStatus().equals(BuildingStatus.INITIALIZING) || app.getStatus().equals(BuildingStatus.FAILED)){
                 OpenbatonCreateServer server = deploymentMap.get(id);
@@ -252,7 +255,7 @@ public class NubomediaAppManager {
             }
 
             appRepo.delete(app);
-            return new NubomediaDeleteAppResponse(id,name,projectName,200);
+            return new NubomediaDeleteAppResponse(id,name,200);
 
         }
 
@@ -260,7 +263,7 @@ public class NubomediaAppManager {
             obmanager.deleteRecord(app.getNsrID());
             appRepo.delete(app);
 
-            return new NubomediaDeleteAppResponse(id,app.getAppName(),app.getProjectName(),200);
+            return new NubomediaDeleteAppResponse(id,app.getAppName(),200);
         }
 
 //        if (app.getStatus().equals(BuildingStatus.CREATED) || app.getStatus().equals(BuildingStatus.INITIALIZING)){
@@ -274,25 +277,31 @@ public class NubomediaAppManager {
         obmanager.deleteRecord(app.getNsrID());
         HttpStatus resDelete = HttpStatus.BAD_REQUEST;
         try {
-            resDelete = osmanager.deleteApplication(app.getAppName(), app.getProjectName());
+            resDelete = osmanager.deleteApplication(app.getAppName(), projectName);
         } catch (ResourceAccessException e){
             logger.info("PaaS Missing");
         }
 
         appRepo.delete(app);
 
-        return new NubomediaDeleteAppResponse(id,app.getAppName(),app.getProjectName(),resDelete.value());
+        return new NubomediaDeleteAppResponse(id,app.getAppName(),resDelete.value());
     }
 
     @RequestMapping(value = "/secret", method = RequestMethod.POST)
     public @ResponseBody String createSecret(@RequestBody NubomediaCreateSecretRequest ncsr) throws UnauthorizedException {
 
-        logger.debug("Creating new secret for " + ncsr.getProjectName() + " with key " + ncsr.getPrivateKey());
-        return osmanager.createSecret(ncsr.getPrivateKey(), ncsr.getProjectName());
+        UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String projectName = userDetails.getUsername();
+
+        logger.debug("Creating new secret for " + projectName + " with key " + ncsr.getPrivateKey());
+        return osmanager.createSecret(ncsr.getPrivateKey(), projectName);
     }
 
-    @RequestMapping(value = "/secret/{projectName}/{secretName}", method = RequestMethod.DELETE)
-    public @ResponseBody NubomediaDeleteSecretResponse deleteSecret (@PathVariable("secretName") String secretName, @PathVariable("projectName") String projectName) throws UnauthorizedException {
+    @RequestMapping(value = "/secret/{secretName}", method = RequestMethod.DELETE)
+    public @ResponseBody NubomediaDeleteSecretResponse deleteSecret (@PathVariable("secretName") String secretName) throws UnauthorizedException {
+
+        UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String projectName = userDetails.getUsername();
 
         HttpStatus deleteStatus = osmanager.deleteSecret(secretName, projectName);
         return new NubomediaDeleteSecretResponse(secretName,projectName,deleteStatus.value());
@@ -301,6 +310,8 @@ public class NubomediaAppManager {
     private BuildingStatus getStatus(Application app) throws UnauthorizedException {
 
         BuildingStatus res = null;
+        UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String projectName = userDetails.getUsername();
 
         switch (app.getStatus()) {
             case CREATED:

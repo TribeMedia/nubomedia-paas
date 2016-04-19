@@ -10,16 +10,14 @@ public class NubomediaDeleteAppResponse {
 
     private String appID;
     private String appName;
-    private String nameSpace;
     private int code;
 
     public NubomediaDeleteAppResponse() {
     }
 
-    public NubomediaDeleteAppResponse(String appID, String appName, String nameSpace, int deleteStatus) {
+    public NubomediaDeleteAppResponse(String appID, String appName, int deleteStatus) {
         this.appID = appID;
         this.appName = appName;
-        this.nameSpace = nameSpace;
         this.code = deleteStatus;
     }
 
@@ -37,14 +35,6 @@ public class NubomediaDeleteAppResponse {
 
     public void setAppName(String appName) {
         this.appName = appName;
-    }
-
-    public String getNameSpace() {
-        return nameSpace;
-    }
-
-    public void setNameSpace(String nameSpace) {
-        this.nameSpace = nameSpace;
     }
 
     public int getCode() {

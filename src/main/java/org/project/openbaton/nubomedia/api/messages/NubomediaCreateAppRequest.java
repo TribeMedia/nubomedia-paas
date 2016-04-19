@@ -12,7 +12,6 @@ public class NubomediaCreateAppRequest {
 
     private String gitURL;
     private String appName;
-    private String projectName;  //Replacing
     private NubomediaPort[] ports;
     private Flavor flavor;
     private int replicasNumber;
@@ -46,14 +45,6 @@ public class NubomediaCreateAppRequest {
 
     public void setAppName(String appName) {
         this.appName = appName;
-    }
-
-    public String getProjectName() {
-        return projectName;
-    }
-
-    public void setProjectName(String projectName) {
-        this.projectName = projectName;
     }
 
     public NubomediaPort[] getPorts() {
@@ -181,7 +172,6 @@ public class NubomediaCreateAppRequest {
         return "NubomediaCreateAppRequest{" +
                 "gitURL='" + gitURL + '\'' +
                 ", appName='" + appName + '\'' +
-                ", projectName='" + projectName + '\'' +
                 ", ports=" + Arrays.toString(ports) +
                 ", flavor=" + flavor +
                 ", replicasNumber=" + replicasNumber +

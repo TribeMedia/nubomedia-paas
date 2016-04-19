@@ -18,11 +18,14 @@ import org.project.openbaton.nubomedia.api.openshift.exceptions.NameStructureExc
 import org.project.openbaton.nubomedia.api.openshift.exceptions.UnauthorizedException;
 import org.project.openbaton.nubomedia.api.persistence.Application;
 import org.project.openbaton.nubomedia.api.persistence.ApplicationRepository;
+import org.project.openbaton.nubomedia.api.security.NubomediaUserDetailService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.ResourceAccessException;
 
@@ -40,7 +43,7 @@ import java.util.*;
 @RequestMapping("/api/v1/nubomedia/paas")
 public class NubomediaAppManager {
 
-    private static Map<String, OpenbatonCreateServer> deploymentMap = new HashMap<>();
+    @Autowired private Map<String, OpenbatonCreateServer> deploymentMap = new HashMap<>();
     private Logger logger;
     private SecureRandom appIDGenerator;
 
@@ -58,6 +61,9 @@ public class NubomediaAppManager {
 
     @RequestMapping(value = "/app",  method = RequestMethod.POST)
     public @ResponseBody NubomediaCreateAppResponse createApp(@RequestBody NubomediaCreateAppRequest request) throws SDKException, UnauthorizedException, DuplicatedException, NameStructureException, turnServerException, StunServerException {
+
+        UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String projectName = userDetails.getUsername();
 
         if(request.getAppName().length() > 18){
 
@@ -97,7 +103,7 @@ public class NubomediaAppManager {
         String appID = new BigInteger(130,appIDGenerator).toString(64);
         logger.debug("App ID " + appID + "\n");
 
-        logger.debug("request params " + request.getAppName() + " " + request.getGitURL() + " " + request.getProjectName() + " " + ports + " " + protocols + " " + request.getReplicasNumber());
+        logger.debug("request params " + request.getAppName() + " " + request.getGitURL() + ports + " " + protocols + " " + request.getReplicasNumber());
 
         //Openbaton MediaServer Request
         logger.info("[PAAS]: EVENT_APP_CREATE " + new Date().getTime());
@@ -105,7 +111,7 @@ public class NubomediaAppManager {
 
         deploymentMap.put(appID,openbatonCreateServer);
 
-        Application persistApp = new Application(appID,request.getFlavor(),request.getAppName(),request.getProjectName(),"",openbatonCreateServer.getMediaServerID(), request.getGitURL(), targetPorts, ports, protocols,null, request.getReplicasNumber(),request.getSecretName(),false);
+        Application persistApp = new Application(appID,request.getFlavor(),request.getAppName(),projectName,"",openbatonCreateServer.getMediaServerID(), request.getGitURL(), targetPorts, ports, protocols,null, request.getReplicasNumber(),request.getSecretName(),false);
         appRepo.save(persistApp);
 
         res.setApp(persistApp);
@@ -290,104 +296,6 @@ public class NubomediaAppManager {
 
         HttpStatus deleteStatus = osmanager.deleteSecret(secretName, projectName);
         return new NubomediaDeleteSecretResponse(secretName,projectName,deleteStatus.value());
-    }
-
-    @RequestMapping(value = "/openbaton/{id}", method = RequestMethod.POST, consumes = MediaType.APPLICATION_JSON_VALUE)
-    @ResponseStatus(HttpStatus.OK)
-    public void startOpenshiftBuild(@RequestBody OpenbatonEvent evt, @PathVariable("id") String id) throws UnauthorizedException{
-        logger.debug("starting callback for appId" + id);
-        logger.info("Received event " + evt);
-        Application app = appRepo.findFirstByAppID(id);
-        logger.debug(deploymentMap.toString());
-        OpenbatonCreateServer server = deploymentMap.get(id);
-
-        if(evt.getAction().equals(Action.INSTANTIATE_FINISH) && server.getMediaServerID().equals(evt.getPayload().getId())){
-            logger.info("[PAAS]: EVENT_FINISH " + new Date().getTime());
-            app.setStatus(BuildingStatus.INITIALISED);
-            app.setResourceOK(true);
-            appRepo.save(app);
-
-            String vnfrID ="";
-            String cloudRepositoryIp = null;
-            String cloudRepositoryPort = null;
-
-            for(VirtualNetworkFunctionRecord record : evt.getPayload().getVnfr()){
-
-                if(record.getEndpoint().equals("media-server"))
-                    vnfrID = record.getId();
-
-                if(record.getName().contains("mongodb")){
-                    cloudRepositoryIp = this.getCloudRepoIP(record);
-                    cloudRepositoryPort = "7676";
-                }
-
-            }
-
-            String route = null;
-            try {
-                int[] ports = new int[app.getPorts().size()];
-                int[] targetPorts = new int[app.getTargetPorts().size()];
-
-                for(int i = 0; i < ports.length; i++){
-                    ports[i] = app.getPorts().get(i);
-                    targetPorts[i] = app.getTargetPorts().get(i);
-                }
-
-                logger.info("[PAAS]: CREATE_APP_OS " + new Date().getTime());
-                logger.debug("cloudRepositoryPort "+ cloudRepositoryPort + " IP " + cloudRepositoryIp);
-
-                try {
-                    route = osmanager.buildApplication(app.getAppID(), app.getAppName(), app.getProjectName(), app.getGitURL(), ports, targetPorts, app.getProtocols().toArray(new String[0]), app.getReplicasNumber(), app.getSecretName(), vnfrID, paaSProperties.getVnfmIP(), paaSProperties.getVnfmPort(), cloudRepositoryIp, cloudRepositoryPort);
-
-                } catch (ResourceAccessException e){
-                    obmanager.deleteDescriptor(server.getNsdID());
-                    obmanager.deleteEvent(server.getEventAllocatedID());
-                    obmanager.deleteEvent(server.getEventErrorID());
-                    app.setStatus(BuildingStatus.FAILED);
-                    appRepo.save(app);
-                    deploymentMap.remove(app.getAppID());
-                }
-                logger.info("[PAAS]: SCHEDULED_APP_OS " + new Date().getTime());
-            } catch (DuplicatedException e) {
-                app.setRoute(e.getMessage());
-                app.setStatus(BuildingStatus.DUPLICATED);
-                appRepo.save(app);
-                return;
-            }
-            obmanager.deleteDescriptor(server.getNsdID());
-
-            obmanager.deleteEvent(server.getEventAllocatedID());
-            obmanager.deleteEvent(server.getEventErrorID());
-            app.setRoute(route);
-            appRepo.save(app);
-            deploymentMap.remove(app.getAppID());
-        }
-        else if (evt.getAction().equals(Action.ERROR)){
-
-            obmanager.deleteDescriptor(server.getNsdID());
-            obmanager.deleteEvent(server.getEventErrorID());
-            obmanager.deleteEvent(server.getEventAllocatedID());
-            obmanager.deleteRecord(server.getMediaServerID());
-            app.setStatus(BuildingStatus.FAILED);
-            appRepo.save(app);
-            deploymentMap.remove(app.getAppID());
-        }
-
-    }
-
-    private String getCloudRepoIP(VirtualNetworkFunctionRecord record) {
-
-        for (VirtualDeploymentUnit vdu : record.getVdu()){
-            for (VNFCInstance instance : vdu.getVnfc_instance()){
-                for (Ip ip : instance.getFloatingIps()){
-                    if (ip != null){
-                        return ip.getIp();
-                    }
-                }
-            }
-        }
-
-        return null;
     }
 
     private BuildingStatus getStatus(Application app) throws UnauthorizedException {

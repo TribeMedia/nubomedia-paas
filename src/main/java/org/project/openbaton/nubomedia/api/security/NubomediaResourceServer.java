@@ -24,8 +24,8 @@ public class NubomediaResourceServer  extends ResourceServerConfigurerAdapter {
         http.headers().frameOptions().disable();
         logger.debug("Enabling web security");
         http.authorizeRequests().regexMatchers(HttpMethod.POST, "/api/v1/nubomedia/paas").access("#oauth2.hasScope('write')").and().sessionManagement().sessionCreationPolicy(SessionCreationPolicy.NEVER).and().exceptionHandling();
-        http.authorizeRequests().regexMatchers(HttpMethod.GET, "/api/v1/nubomedia/user").access("#oauth2.hasScope('write')").and().sessionManagement().sessionCreationPolicy(SessionCreationPolicy.NEVER).and().exceptionHandling();
-        http.authorizeRequests().regexMatchers(HttpMethod.DELETE, "/api/v1/nubomedia/user").access("#oauth2.hasScope('write')").and().sessionManagement().sessionCreationPolicy(SessionCreationPolicy.NEVER).and().exceptionHandling();
+        http.authorizeRequests().regexMatchers("/api/v1/nubomedia/user").access("#oauth2.hasScope('write')").and().sessionManagement().sessionCreationPolicy(SessionCreationPolicy.NEVER).and().exceptionHandling();
+        http.authorizeRequests().regexMatchers("/api/v1/nubomedia/user").hasRole("ADMIN").and().sessionManagement().sessionCreationPolicy(SessionCreationPolicy.NEVER).and().exceptionHandling();
         http.authorizeRequests().antMatchers("/api/v1/nubomedia/paas").access("#oauth2.hasScope('write')").and().sessionManagement().sessionCreationPolicy(SessionCreationPolicy.NEVER).and().exceptionHandling();
     }
 

@@ -11,4 +11,5 @@ public interface ApplicationRepository extends CrudRepository<Application, Strin
 
     List<Application> findByAppName(String appName);
     Application findFirstByAppID(String id);
+    List<Application> findByProjectName(String projectName);
 }

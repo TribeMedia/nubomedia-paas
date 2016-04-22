@@ -8,6 +8,7 @@ import org.openbaton.catalogue.nfvo.Action;
 import org.openbaton.sdk.api.exception.SDKException;
 import org.project.openbaton.nubomedia.api.configuration.PaaSProperties;
 import org.project.openbaton.nubomedia.api.exceptions.ApplicationNotFoundException;
+import org.project.openbaton.nubomedia.api.exceptions.WrongApplicationException;
 import org.project.openbaton.nubomedia.api.messages.*;
 import org.project.openbaton.nubomedia.api.openbaton.OpenbatonCreateServer;
 import org.project.openbaton.nubomedia.api.openbaton.OpenbatonEvent;
@@ -18,6 +19,8 @@ import org.project.openbaton.nubomedia.api.openshift.exceptions.NameStructureExc
 import org.project.openbaton.nubomedia.api.openshift.exceptions.UnauthorizedException;
 import org.project.openbaton.nubomedia.api.persistence.Application;
 import org.project.openbaton.nubomedia.api.persistence.ApplicationRepository;
+import org.project.openbaton.nubomedia.api.persistence.User;
+import org.project.openbaton.nubomedia.api.persistence.UserRepository;
 import org.project.openbaton.nubomedia.api.security.NubomediaUserDetailService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,6 +53,7 @@ public class NubomediaAppManager {
     @Autowired private OpenshiftManager osmanager;
     @Autowired private OpenbatonManager obmanager;
     @Autowired private ApplicationRepository appRepo;
+    @Autowired private UserRepository userRepository;
     @Autowired private PaaSProperties paaSProperties;
 
     @PostConstruct
@@ -120,9 +124,12 @@ public class NubomediaAppManager {
     }
 
     @RequestMapping(value = "/app/{id}", method =  RequestMethod.GET)
-    public @ResponseBody Application getApp(@PathVariable("id") String id) throws ApplicationNotFoundException, UnauthorizedException {
+    public @ResponseBody Application getApp(@PathVariable("id") String id) throws ApplicationNotFoundException, UnauthorizedException, WrongApplicationException {
 
         logger.info("Request status for " + id + " app");
+
+        UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String username = userDetails.getUsername();
 
         if(!appRepo.exists(id)){
             throw new ApplicationNotFoundException("Application with ID not found");
@@ -131,20 +138,24 @@ public class NubomediaAppManager {
         Application app = appRepo.findFirstByAppID(id);
         logger.debug("Retrieving status for " + app.toString() + "\nwith status " + app.getStatus());
 
-        app.setStatus(this.getStatus(app));
-
-        appRepo.save(app);
+        if (checkAppUser(app,username)){
+            app.setStatus(this.getStatus(app));
+            appRepo.save(app);
+        }
+        else {
+            throw  new WrongApplicationException("Requested application does not belong to current user");
+        }
 
         return app;
 
     }
 
     @RequestMapping(value = "/app/{id}/buildlogs", method = RequestMethod.GET)
-    public @ResponseBody NubomediaBuildLogs getBuildLogs(@PathVariable("id") String id) throws UnauthorizedException {
+    public @ResponseBody NubomediaBuildLogs getBuildLogs(@PathVariable("id") String id) throws UnauthorizedException, WrongApplicationException {
 
         NubomediaBuildLogs res = new NubomediaBuildLogs();
         UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        String projectName = userDetails.getUsername();
+        String username = userDetails.getUsername();
 
         if(!appRepo.exists(id)){
             return null;
@@ -152,45 +163,51 @@ public class NubomediaAppManager {
 
         Application app = appRepo.findFirstByAppID(id);
 
-        if(app.getStatus().equals(BuildingStatus.FAILED) && !app.isResourceOK()){
+        if (checkAppUser(app,username)) {
 
-            res.setId(id);
-            res.setAppName(app.getAppName());
-            res.setLog("Something wrong on retrieving resources");
+            if (app.getStatus().equals(BuildingStatus.FAILED) && !app.isResourceOK()) {
 
-        } else if(app.getStatus().equals(BuildingStatus.CREATED) || app.getStatus().equals(BuildingStatus.INITIALIZING)){
-            res.setId(id);
-            res.setAppName(app.getAppName());
-            res.setLog("The application is retrieving resources " + app.getStatus());
+                res.setId(id);
+                res.setAppName(app.getAppName());
+                res.setLog("Something wrong on retrieving resources");
 
-            return res;
-        } else if (app.getStatus().equals(BuildingStatus.PAAS_RESOURCE_MISSING)){
-            res.setId(id);
-            res.setAppName(app.getAppName());
-            res.setLog("PaaS components are missing, send an email to the administrator to chekc the PaaS status");
+            } else if (app.getStatus().equals(BuildingStatus.CREATED) || app.getStatus().equals(BuildingStatus.INITIALIZING)) {
+                res.setId(id);
+                res.setAppName(app.getAppName());
+                res.setLog("The application is retrieving resources " + app.getStatus());
 
-            return res;
-        } else {
+                return res;
+            } else if (app.getStatus().equals(BuildingStatus.PAAS_RESOURCE_MISSING)) {
+                res.setId(id);
+                res.setAppName(app.getAppName());
+                res.setLog("PaaS components are missing, send an email to the administrator to chekc the PaaS status");
 
-            res.setId(id);
-            res.setAppName(app.getAppName());
-            try {
-                res.setLog(osmanager.getBuildLogs(app.getAppName(), projectName));
-            } catch (ResourceAccessException e) {
-                app.setStatus(BuildingStatus.PAAS_RESOURCE_MISSING);
-                appRepo.save(app);
-                res.setLog("Openshift is not responding, app " + app.getAppName() + " is not anymore available");
+                return res;
+            } else {
+
+                res.setId(id);
+                res.setAppName(app.getAppName());
+                try {
+                    res.setLog(osmanager.getBuildLogs(app.getAppName(), app.getProjectName()));
+                } catch (ResourceAccessException e) {
+                    app.setStatus(BuildingStatus.PAAS_RESOURCE_MISSING);
+                    appRepo.save(app);
+                    res.setLog("Openshift is not responding, app " + app.getAppName() + " is not anymore available");
+                }
             }
+        }
+        else {
+            throw new WrongApplicationException("Requested application does not belong to current user");
         }
 
         return res;
     }
 
     @RequestMapping(value = "/app/{id}/logs/{podName}", method = RequestMethod.GET)
-    public @ResponseBody String getApplicationLogs(@PathVariable("id") String id,@PathVariable("podName") String podName) throws UnauthorizedException, ApplicationNotFoundException {
+    public @ResponseBody String getApplicationLogs(@PathVariable("id") String id,@PathVariable("podName") String podName) throws UnauthorizedException, ApplicationNotFoundException, WrongApplicationException {
 
         UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        String projectName = userDetails.getUsername();
+        String username = userDetails.getUsername();
 
         if(!appRepo.exists(id)){
             throw new ApplicationNotFoundException("Application with ID not found");
@@ -198,19 +215,34 @@ public class NubomediaAppManager {
 
         Application app = appRepo.findFirstByAppID(id);
 
-        if(!app.getStatus().equals(BuildingStatus.RUNNING)){
-            return "Application Status " + app.getStatus() + ", logs are not available until the status is RUNNING";
-        }
+        if (checkAppUser(app,username)) {
+            if (!app.getStatus().equals(BuildingStatus.RUNNING)) {
+                return "Application Status " + app.getStatus() + ", logs are not available until the status is RUNNING";
+            }
 
-        return osmanager.getApplicationLog(app.getAppName(),projectName,podName);
+            return osmanager.getApplicationLog(app.getAppName(), app.getProjectName(), podName);
+        }
+        else {
+            throw new WrongApplicationException("Requested application does not belong to current user");
+        }
 
     }
 
     @RequestMapping(value = "/app", method = RequestMethod.GET)
-    public @ResponseBody Iterable<Application> getApps() throws UnauthorizedException, ApplicationNotFoundException {
+    public @ResponseBody List<Application> getApps() throws UnauthorizedException, ApplicationNotFoundException {
 
-        //BETA
-        Iterable<Application> applications = this.appRepo.findAll();
+        UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String username = userDetails.getUsername();
+
+        User user = this.userRepository.findFirstByUsername(username);
+
+        List<Application> applications = new ArrayList<>();
+
+        for (String projectName : user.getProjects()){
+
+            applications.addAll(this.appRepo.findByProjectName(projectName));
+
+        }
 
         for (Application app : applications){
             app.setStatus(this.getStatus(app));
@@ -222,10 +254,10 @@ public class NubomediaAppManager {
     }
 
     @RequestMapping(value = "/app/{id}", method = RequestMethod.DELETE)
-    public @ResponseBody NubomediaDeleteAppResponse deleteApp(@PathVariable("id") String id) throws UnauthorizedException {
+    public @ResponseBody NubomediaDeleteAppResponse deleteApp(@PathVariable("id") String id) throws UnauthorizedException, WrongApplicationException {
 
         UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        String projectName = userDetails.getUsername();
+        String username = userDetails.getUsername();
 
         logger.debug("id " + id);
 
@@ -233,58 +265,64 @@ public class NubomediaAppManager {
             return new NubomediaDeleteAppResponse(id,"Application not found",404);
         }
 
+
         Application app = appRepo.findFirstByAppID(id);
-        app.setStatus(this.getStatus(app));
-        logger.debug("Deleting " + app.toString());
 
-        if (!app.isResourceOK()){
+        if (checkAppUser(app,username)) {
+            app.setStatus(this.getStatus(app));
+            logger.debug("Deleting " + app.toString());
 
-            String name = app.getAppName();
+            if (!app.isResourceOK()) {
 
-            if(app.getStatus().equals(BuildingStatus.CREATED) || app.getStatus().equals(BuildingStatus.INITIALIZING) || app.getStatus().equals(BuildingStatus.FAILED)){
-                OpenbatonCreateServer server = deploymentMap.get(id);
-                obmanager.deleteDescriptor(server.getNsdID());
-                obmanager.deleteEvent(server.getEventAllocatedID());
-                obmanager.deleteEvent(server.getEventErrorID());
+                String name = app.getAppName();
 
-                if (!app.getStatus().equals(BuildingStatus.FAILED) && obmanager.existRecord(server.getMediaServerID())) {
-                    obmanager.deleteRecord(app.getNsrID());
+                if (app.getStatus().equals(BuildingStatus.CREATED) || app.getStatus().equals(BuildingStatus.INITIALIZING) || app.getStatus().equals(BuildingStatus.FAILED)) {
+                    OpenbatonCreateServer server = deploymentMap.get(id);
+                    obmanager.deleteDescriptor(server.getNsdID());
+                    obmanager.deleteEvent(server.getEventAllocatedID());
+                    obmanager.deleteEvent(server.getEventErrorID());
+
+                    if (!app.getStatus().equals(BuildingStatus.FAILED) && obmanager.existRecord(server.getMediaServerID())) {
+                        obmanager.deleteRecord(app.getNsrID());
+                    }
+                    deploymentMap.remove(app.getAppID());
+
                 }
-                deploymentMap.remove(app.getAppID());
+
+                appRepo.delete(app);
+                return new NubomediaDeleteAppResponse(id, name, 200);
 
             }
 
-            appRepo.delete(app);
-            return new NubomediaDeleteAppResponse(id,name,200);
+            if (app.getStatus().equals(BuildingStatus.PAAS_RESOURCE_MISSING)) {
+                obmanager.deleteRecord(app.getNsrID());
+                appRepo.delete(app);
 
-        }
+                return new NubomediaDeleteAppResponse(id, app.getAppName(), 200);
+            }
 
-        if (app.getStatus().equals(BuildingStatus.PAAS_RESOURCE_MISSING)){
+            //        if (app.getStatus().equals(BuildingStatus.CREATED) || app.getStatus().equals(BuildingStatus.INITIALIZING)){
+            //
+            //            obmanager.deleteRecord(app.getNsrID());
+            //            return new NubomediaDeleteAppResponse(id,app.getAppName(),app.getProjectName(),200);
+            //
+            //        }
+
+
             obmanager.deleteRecord(app.getNsrID());
+            HttpStatus resDelete = HttpStatus.BAD_REQUEST;
+            try {
+                resDelete = osmanager.deleteApplication(app.getAppName(), app.getProjectName());
+            } catch (ResourceAccessException e) {
+                logger.info("PaaS Missing");
+            }
+
             appRepo.delete(app);
-
-            return new NubomediaDeleteAppResponse(id,app.getAppName(),200);
+            return new NubomediaDeleteAppResponse(id,app.getAppName(),resDelete.value());
         }
-
-//        if (app.getStatus().equals(BuildingStatus.CREATED) || app.getStatus().equals(BuildingStatus.INITIALIZING)){
-//
-//            obmanager.deleteRecord(app.getNsrID());
-//            return new NubomediaDeleteAppResponse(id,app.getAppName(),app.getProjectName(),200);
-//
-//        }
-
-
-        obmanager.deleteRecord(app.getNsrID());
-        HttpStatus resDelete = HttpStatus.BAD_REQUEST;
-        try {
-            resDelete = osmanager.deleteApplication(app.getAppName(), projectName);
-        } catch (ResourceAccessException e){
-            logger.info("PaaS Missing");
+        else {
+            throw new WrongApplicationException("Requested application does not belong to current user");
         }
-
-        appRepo.delete(app);
-
-        return new NubomediaDeleteAppResponse(id,app.getAppName(),resDelete.value());
     }
 
     @RequestMapping(value = "/secret", method = RequestMethod.POST)
@@ -367,6 +405,18 @@ public class NubomediaAppManager {
         }
 
         return res;
+    }
+
+    private boolean checkAppUser(Application app, String username){
+
+        String projectName = app.getProjectName();
+        User targetUser = userRepository.findFirstByUsername(username);
+
+        if (targetUser.getProjects().contains(projectName)){
+            return true;
+        }
+
+        return false;
     }
 
 }

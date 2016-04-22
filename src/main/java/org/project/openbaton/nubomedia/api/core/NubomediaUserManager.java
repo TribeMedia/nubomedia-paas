@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.PostConstruct;
+import java.util.ArrayList;
 
 /**
  * Created by Carlo on 19/04/2016.
@@ -33,7 +34,7 @@ public class NubomediaUserManager {
             return "User " + create.getUsername() + " already exist";
         }
         else{
-            User newUser = new User(create.getUsername(),create.getPassword(),create.getMail(),false);
+            User newUser = new User(create.getUsername(),create.getPassword(),create.getMail(), new ArrayList<>(), false);
             repository.save(newUser);
             return "User " + create.getUsername() + " successfully created";
         }
@@ -50,5 +51,7 @@ public class NubomediaUserManager {
         repository.delete(deleteUser);
         return "User " + username + " successfully deleted";
     }
+
+    
     //user must be created by an administrator, it also must be assigned to a project
 }

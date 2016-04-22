@@ -1,9 +1,7 @@
 package org.project.openbaton.nubomedia.api.persistence;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.PrePersist;
+import javax.persistence.*;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -18,15 +16,18 @@ public class User {
     private String username;
     private String password;
     private String mail;
+    @ElementCollection (fetch = FetchType.EAGER)
+    private List<String> projects;
     private boolean admin;
 
     public User() {
     }
 
-    public User(String username, String password, String mail, boolean admin) {
+    public User(String username, String password, String mail, List<String> projects, boolean admin) {
         this.username = username;
         this.password = password;
         this.mail = mail;
+        this.projects = projects;
         this.admin = admin;
     }
 
@@ -68,6 +69,14 @@ public class User {
 
     public void setAdmin(boolean admin) {
         this.admin = admin;
+    }
+
+    public List<String> getProjects() {
+        return projects;
+    }
+
+    public void setProjects(List<String> projects) {
+        this.projects = projects;
     }
 
     @PrePersist

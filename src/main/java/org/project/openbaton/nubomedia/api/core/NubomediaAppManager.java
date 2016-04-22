@@ -8,6 +8,7 @@ import org.openbaton.catalogue.nfvo.Action;
 import org.openbaton.sdk.api.exception.SDKException;
 import org.project.openbaton.nubomedia.api.configuration.PaaSProperties;
 import org.project.openbaton.nubomedia.api.exceptions.ApplicationNotFoundException;
+import org.project.openbaton.nubomedia.api.exceptions.SecretException;
 import org.project.openbaton.nubomedia.api.exceptions.WrongApplicationException;
 import org.project.openbaton.nubomedia.api.messages.*;
 import org.project.openbaton.nubomedia.api.openbaton.OpenbatonCreateServer;
@@ -326,30 +327,42 @@ public class NubomediaAppManager {
     }
 
     @RequestMapping(value = "/secret", method = RequestMethod.POST)
-    public @ResponseBody String createSecret(@RequestBody NubomediaCreateSecretRequest ncsr) throws UnauthorizedException {
+    public @ResponseBody String createSecret(@RequestBody NubomediaCreateSecretRequest ncsr) throws UnauthorizedException, SecretException {
 
         UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        String projectName = userDetails.getUsername();
+        String username = userDetails.getUsername();
 
-        logger.debug("Creating new secret for " + projectName + " with key " + ncsr.getPrivateKey());
-        return osmanager.createSecret(ncsr.getPrivateKey(), projectName);
+        User user = this.userRepository.findFirstByUsername(username);
+
+        if (user.getProjects().contains(ncsr.getProjectName())){
+            logger.debug("Creating new secret for " + ncsr.getProjectName() + " with key " + ncsr.getPrivateKey());
+            return osmanager.createSecret(ncsr.getPrivateKey(), ncsr.getProjectName());
+        }
+        else {
+            throw new SecretException("User " + username + " is not included in project " + ncsr.getProjectName());
+        }
     }
 
-    @RequestMapping(value = "/secret/{secretName}", method = RequestMethod.DELETE)
-    public @ResponseBody NubomediaDeleteSecretResponse deleteSecret (@PathVariable("secretName") String secretName) throws UnauthorizedException {
+    @RequestMapping(value = "/secret/{projectName}/{secretName}", method = RequestMethod.DELETE)
+    public @ResponseBody NubomediaDeleteSecretResponse deleteSecret (@PathVariable("secretName") String secretName, @PathVariable("projectName") String projectName) throws UnauthorizedException, SecretException {
 
         UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        String projectName = userDetails.getUsername();
+        String username = userDetails.getUsername();
 
-        HttpStatus deleteStatus = osmanager.deleteSecret(secretName, projectName);
-        return new NubomediaDeleteSecretResponse(secretName,projectName,deleteStatus.value());
+        User user = this.userRepository.findFirstByUsername(username);
+
+        if (user.getProjects().contains(projectName)) {
+            HttpStatus deleteStatus = osmanager.deleteSecret(secretName, projectName);
+            return new NubomediaDeleteSecretResponse(secretName, projectName, deleteStatus.value());
+        }
+        else {
+            throw new SecretException("User " + username + " is not included in project " + projectName);
+        }
     }
 
     private BuildingStatus getStatus(Application app) throws UnauthorizedException {
 
         BuildingStatus res = null;
-        UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        String projectName = userDetails.getUsername();
 
         switch (app.getStatus()) {
             case CREATED:

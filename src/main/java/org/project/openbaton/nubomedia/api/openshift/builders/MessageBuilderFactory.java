@@ -49,8 +49,8 @@ public class MessageBuilderFactory {
         return builder.buildMessage();
     }
 
-    public static ProjectRequest getProjectRequest(String name){
-        ProjectRequestBuilder builder = new ProjectRequestBuilder(name, "This is the project of " + name);
+    public static ProjectRequest getProjectRequest(String name, String description){
+        ProjectRequestBuilder builder = new ProjectRequestBuilder(name, description);
         return builder.buildMessage();
     }
 

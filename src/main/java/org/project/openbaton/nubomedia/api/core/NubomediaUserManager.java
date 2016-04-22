@@ -1,15 +1,21 @@
 package org.project.openbaton.nubomedia.api.core;
 
+import org.project.openbaton.nubomedia.api.messages.NubomediaProjectCreate;
 import org.project.openbaton.nubomedia.api.messages.NubomediaUserCreate;
+import org.project.openbaton.nubomedia.api.openshift.exceptions.UnauthorizedException;
+import org.project.openbaton.nubomedia.api.openshift.json.Project;
 import org.project.openbaton.nubomedia.api.persistence.User;
 import org.project.openbaton.nubomedia.api.persistence.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.PostConstruct;
-import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Created by Carlo on 19/04/2016.
@@ -34,7 +40,7 @@ public class NubomediaUserManager {
             return "User " + create.getUsername() + " already exist";
         }
         else{
-            User newUser = new User(create.getUsername(),create.getPassword(),create.getMail(), new ArrayList<>(), false);
+            User newUser = new User(create.getUsername(),create.getPassword(),create.getMail(), create.getProjects(), false);
             repository.save(newUser);
             return "User " + create.getUsername() + " successfully created";
         }
@@ -48,10 +54,41 @@ public class NubomediaUserManager {
     @RequestMapping(value = "/{username}", method = RequestMethod.DELETE)
     public String deleteUser (@PathVariable("username") String username){
         User deleteUser = repository.findFirstByUsername(username);
-        repository.delete(deleteUser);
-        return "User " + username + " successfully deleted";
+
+        if (deleteUser != null) {
+            repository.delete(deleteUser);
+            return "User " + username + " successfully deleted";
+        }
+        else {
+            throw new UsernameNotFoundException("User " + username + " not found");
+        }
     }
 
-    
+    @RequestMapping(value = "/{username}/projects", method = RequestMethod.GET)
+    public List<String> getUserProjects (@PathVariable("username") String username){
+        User user = this.repository.findFirstByUsername(username);
+        if (user != null){
+            return user.getProjects();
+        }
+        else{
+            throw new UsernameNotFoundException("User " + username + " not found");
+        }
+    }
+
+    @RequestMapping(value = "/projects", method = RequestMethod.GET)
+    public List<String> getAllProjects(){
+        return this.osmanager.getProjects();
+    }
+
+    @RequestMapping(value = "projects", method = RequestMethod.POST)
+    public Project createProject(@RequestBody  NubomediaProjectCreate project) throws UnauthorizedException {
+        return this.osmanager.createProject(project.getName(),project.getDescription());
+    }
+
+    @RequestMapping(value = "/projects/{name}", method = RequestMethod.DELETE)
+    public HttpStatus deleteProject(@PathVariable("name") String name){
+        ResponseEntity<String> res = this.osmanager.deleteProject(name);
+        return res.getStatusCode();
+    }
     //user must be created by an administrator, it also must be assigned to a project
 }

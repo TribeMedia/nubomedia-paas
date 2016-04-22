@@ -210,12 +210,12 @@ public class OpenshiftManager {
         return deploymentManager.getPodNameList(kubernetesBaseURL,namespace,appName,requestEntity);
     }
 
-    public Project createProject (String username) throws UnauthorizedException {
-        return this.projectManager.createProject(token,openshiftBaseURL,username);
+    public Project createProject (String username, String description) throws UnauthorizedException {
+        return this.projectManager.createProject(token,openshiftBaseURL,username,description);
     }
 
-    public ResponseEntity<String> deleteProject (String username){
-        return this.projectManager.deleteProject(token,openshiftBaseURL,username);
+    public ResponseEntity<String> deleteProject (String name){
+        return this.projectManager.deleteProject(token,openshiftBaseURL,name);
     }
 
     public List<String> getProjects (){

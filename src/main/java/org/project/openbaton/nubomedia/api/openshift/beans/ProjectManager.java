@@ -35,12 +35,12 @@ public class ProjectManager {
         this.suffixProjects = "/projects";
     }
 
-    public Project createProject(String authToken, String baseURL, String name) throws UnauthorizedException {
+    public Project createProject(String authToken, String baseURL, String name, String description) throws UnauthorizedException {
         logger.debug("Creating ProjectRequest for user " + name);
         String url = baseURL + suffixCreation;
         HttpHeaders headers = new HttpHeaders();
         headers.add("Authorization","Bearer " + authToken);
-        ProjectRequest message = MessageBuilderFactory.getProjectRequest(name);
+        ProjectRequest message = MessageBuilderFactory.getProjectRequest(name, description);
         logger.debug("This is the message " + mapper.toJson(message,ProjectRequest.class));
         HttpEntity<String> projectEntity = new HttpEntity<>(mapper.toJson(message,ProjectRequest.class),headers);
         ResponseEntity<String> projectResponse = template.exchange(url, HttpMethod.POST,projectEntity,String.class);
